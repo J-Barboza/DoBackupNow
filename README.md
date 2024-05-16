@@ -22,21 +22,30 @@ Este projeto implementa um sistema de backup utilizando o 7zip para arquivamento
 ### Arquivo de Configuração (config.json)
 
 Este arquivo contém as configurações dos grupos de backup, especificando os diretórios de origem e o destino dos backups. Exemplo:
-
 ```json
 {
-  "backup_groups": [
-    {
-      "source_directories": ["C:/path/to/documents", "D:/other/documents"],
-      "backup_destination": "E:/backups"
-    },
-    {
-      "source_directories": ["C:/another/path"],
-      "backup_destination": "F:/backup_folder"
-    }
-  ]
+    "backup_groups": [
+        {
+            "source_directories": [
+                "C:/path/to/documents", 
+                "D:/other/documents"
+            ],
+            "backup_destination": "E:/backups",
+            "incremental": false
+        },
+        {
+            "source_directories": [
+                "C:/another/path"
+            ],
+            "backup_destination": "F:/backup_folder",
+            "incremental": true
+        }
+    ]
 }
+
 ```
+
+
 
 ### Caminho do 7-Zip
 

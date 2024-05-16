@@ -1,0 +1,18 @@
+{
+    "backup_groups": [
+        {
+            "source_directories": [
+                "I:/Batizado",
+                "I:/Cartões fotos&flashes"
+            ],
+            "backup_destination": "L:/DoBackupNow"
+        },
+        {
+            "source_directories": [
+                "H:/Material para postagem(álbum debutante ensaio)",
+                "I:/Material para postagens foto filmagem"
+            ],
+            "backup_destination": "g:/pastaFotos"
+        }
+    ]
+}

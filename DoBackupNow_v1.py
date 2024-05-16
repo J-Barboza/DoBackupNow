@@ -1,75 +1,84 @@
+# Project: Python Backup System using 7zip
+# Name: DoBackupNow
+# Author: Francisco Barboza
+# Date: 05/16/2024 - 11:15
+# Release:
+#   1.0 - Backup
+#   1.0.1 - Incremental added
+
 import os
 import json
 import datetime
 import subprocess
 
-# Project: Sistema de Backup em Python usando o 7zip
-# Name: DoBackupNow
-# Author: Francisco Barboza
-# Date: 16/05/2024 - 11:15
-# Release: 
-# 1.0 - Backup
-# 1.0.1 - Inserido incremental
-
-
-# Caminho completo para o executável do 7-Zip
+# Full path to the 7-Zip executable
 SEVEN_ZIP_PATH = r"C:/Program Files/7-Zip/7z.exe"
 
+def get_absolute_path(file_name):
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), file_name)
+
 def load_config(config_file):
-    with open(config_file, 'r') as file:
+    config_path = get_absolute_path(config_file)
+    if not os.path.exists(config_path):
+        print(f"Configuration file {config_path} not found.")
+        return None
+    with open(config_path, 'r') as file:
         config = json.load(file)
     return config
 
-def get_backup_state(state_file):
-    # Carrega o estado do último backup de um arquivo JSON
-    if os.path.exists(state_file):
-        with open(state_file, 'r') as file:
-            return json.load(file)
-    else:
-        return {}
+def load_last_backup(last_backup_file):
+    if os.path.exists(last_backup_file):
+        with open(last_backup_file, 'r') as file:
+            last_backup_info = json.load(file)
+        return datetime.datetime.fromisoformat(last_backup_info.get("last_backup"))
+    return None
 
-def update_backup_state(state_file, last_backup_time):
-    # Atualiza o estado do último backup em um arquivo JSON
-    state = {"last_backup_time": last_backup_time.isoformat()}
-    with open(state_file, 'w') as file:
-        json.dump(state, file)
+def save_last_backup(last_backup_file, timestamp):
+    with open(last_backup_file, 'w') as file:
+        json.dump({"last_backup": timestamp.isoformat()}, file)
 
 def get_modified_files(source_dirs, last_backup_time):
     modified_files = []
     for source_dir in source_dirs:
-        for root, _, files in os.walk(source_dir):
-            for file in files:
-                file_path = os.path.join(root, file)
-                if last_backup_time is None or os.path.getmtime(file_path) > last_backup_time.timestamp():
-                    modified_files.append(file_path)
+        if os.path.exists(source_dir):
+            for foldername, subfolders, filenames in os.walk(source_dir):
+                for filename in filenames:
+                    file_path = os.path.join(foldername, filename)
+                    file_mtime = datetime.datetime.fromtimestamp(os.path.getmtime(file_path))
+                    if file_mtime > last_backup_time:
+                        modified_files.append(file_path)
     return modified_files
 
-def create_backup(source_dirs, backup_dest, state_file, incremental=False):
-    timestamp = datetime.datetime.now()
-    backup_name = f"backup_{timestamp.strftime('%Y%m%d%H%M%S')}.7z"
+def create_backup(source_dirs, backup_dest, incremental, last_backup_time):
+    timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+    backup_name = f"backup_{timestamp}.7z"
     backup_path = os.path.join(backup_dest, backup_name)
+    
+    if incremental:
+        modified_files = get_modified_files(source_dirs, last_backup_time)
+        if not modified_files:
+            for source_dir in source_dirs:
+                log_backup(f"No files modified since the last backup from the {source_dir}.")
+            return
+        files_to_backup = modified_files
+    else:
+        files_to_backup = []
+        for source_dir in source_dirs:
+            if os.path.exists(source_dir):
+                for foldername, subfolders, filenames in os.walk(source_dir):
+                    for filename in filenames:
+                        file_path = os.path.join(foldername, filename)
+                        files_to_backup.append(file_path)
 
-    state = get_backup_state(state_file)
-    last_backup_time = datetime.datetime.fromisoformat(state.get("last_backup_time")) if "last_backup_time" in state else None
-    
-    source_files = get_modified_files(source_dirs, last_backup_time) if incremental else source_dirs
-    
-    if incremental and not source_files:
-        log_backup("Nenhum arquivo modificado para backup.")
-        return
-    
-    source_files_str = " ".join(f'"{source_file}"' for source_file in source_files if os.path.exists(source_file))
-    if not source_files_str:
-        log_backup("Diretório origem inválido ou nenhum arquivo modificado.")
-        return
-    
-    command = f'"{SEVEN_ZIP_PATH}" a "{backup_path}" {source_files_str}'
+    files_to_backup_str = " ".join(f'"{file}"' for file in files_to_backup)
+    command = f'"{SEVEN_ZIP_PATH}" a "{backup_path}" {files_to_backup_str}'
     try:
         subprocess.run(command, check=True, shell=True)
-        log_backup(f"Backup realizado com sucesso {source_dirs} para {backup_path}")
-        update_backup_state(state_file, timestamp)
+        log_backup(f"Successfully backed up to {backup_path} from {source_dir}")
     except subprocess.CalledProcessError as e:
-        log_backup(f"Erro durante o backup: {e}")
+        log_backup(f"Error during backup: {e}")
+
+    return backup_path
 
 def log_backup(message):
     with open("backup.log", "a") as log_file:
@@ -77,21 +86,24 @@ def log_backup(message):
 
 def main():
     config = load_config("config.json")
+    last_backup_time = load_last_backup("last_backup.json") or datetime.datetime.min
     backup_groups = config.get("backup_groups", [])
 
     if not backup_groups:
-        print("Configuração faltando para o grupo de backup.")
+        print("Configuration is missing backup groups.")
         return
 
     for group in backup_groups:
         source_dirs = group.get("source_directories", [])
         backup_dest = group.get("backup_destination", "")
-        state_file = os.path.join(backup_dest, "backup_state.json")
+        incremental = group.get("incremental", False)
 
         if source_dirs and backup_dest:
-            create_backup(source_dirs, backup_dest, state_file, incremental=True)
+            create_backup(source_dirs, backup_dest, incremental, last_backup_time)
         else:
-            log_backup("Configuração inválida do grupo: " + str(group))
+            log_backup("Invalid configuration for group: " + str(group))
+    
+    save_last_backup("last_backup.json", datetime.datetime.now())
 
 if __name__ == "__main__":
     main()
